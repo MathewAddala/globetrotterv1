@@ -43,6 +43,10 @@ const TreasureCard = ({ treasure, onPointsReveal }) => {
   // Types: 'info' => shows name, description and image
   //        'photo' => image only (or small caption)
   //        'points' => hidden until clicked
+  
+  // Use a highly reliable placeholder if no image is available, preventing the "broken image" icon
+  const fallbackImage = 'https://placehold.co/1000x500/101827/fff?text=Image+Not+Found';
+
   if (treasure.type === 'points') {
     return (
       <div className="treasure-card points-card" ref={cardRef} onClick={handlePointsClick}>
@@ -62,21 +66,31 @@ const TreasureCard = ({ treasure, onPointsReveal }) => {
   }
   // Photo-only card: render only the image (no overlay/title)
   if (treasure.type === 'photo') {
-    const placeholder = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900"><rect width="100%" height="100%" fill="%23000000"/><text x="50%" y="50%" font-size="36" fill="%23ffffff" text-anchor="middle" dominant-baseline="middle">No image available</text></svg>';
-    const src = treasure.imageUrl || treasure.fallbackImage || placeholder;
+    const src = treasure.imageUrl || fallbackImage;
     return (
       <div className={`treasure-card photo-card`} ref={cardRef}>
         {/* Render a real img element so nothing overlays it and it can be full-bleed */}
-        <img className="photo-img" src={src} alt={treasure.name || 'Photo'} />
+        <img className="photo-img" src={src} alt={treasure.name || 'Photo'} 
+             // Add an error handler to ensure a visual fallback if the URL fails
+             onError={(e) => { e.target.onerror = null; e.target.src = fallbackImage; }}
+        />
       </div>
     );
   }
-  // Info card — if imageUrl is present we'll show it, otherwise render text-only info
+  
+  // Info card — now also shows an image if one is available
+  const showImageInInfoCard = !!treasure.imageUrl;
+
   return (
-    <div className={`treasure-card info-card ${treasure.imageUrl ? '' : 'info-only'}`} ref={cardRef}>
-      {/* Keep a spacer where the image would be so info-only cards match the other cards' dimensions */}
-      {!treasure.imageUrl && <div className="info-spacer" aria-hidden="true" />}
-      {treasure.imageUrl && <div className="treasure-image" style={{ backgroundImage: `url(${treasure.imageUrl})` }} />}
+    <div className={`treasure-card info-card ${showImageInInfoCard ? '' : 'info-only'}`} ref={cardRef}>
+      {/* If there's no image, use a spacer to maintain layout */}
+      {!showImageInInfoCard && <div className="info-spacer" aria-hidden="true" />}
+      
+      {/* If there is an image, display it */}
+      {showImageInInfoCard && (
+        <div className="treasure-image" style={{ backgroundImage: `url(${treasure.imageUrl})` }} />
+      )}
+      
       <div className="treasure-info">
         <h3>{treasure.name}</h3>
         {treasure.fact && treasure.fact.split('\n').map((line, i) => (

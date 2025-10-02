@@ -1,11 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
-import Globe from './Globe';
-import TreasureCard from './TreasureCard';
-import Leaderboard from './Leaderboard';
-import playerService from './services/playerService';
-import { loadTreasureLists, findRandomLandLocation, indianTreasures, internationalTreasures, jackpotLocation, fetchWikipediaSummary, worldWonders, fetchWikimediaImages, fetchUnsplashImages } from './services/dataService.js';
+import Globe from './Globe.jsx'; // Corrected import path
+import TreasureCard from './TreasureCard.jsx'; // Corrected import path
+import playerService from './services/playerService.js'; // Corrected import path
+import { loadTreasureLists, findRandomLandLocation, indianTreasures, internationalTreasures, jackpotLocation, fetchWikipediaSummary, worldWonders, fetchWikimediaImages, fetchUnsplashImages } from './services/dataService.js'; // Corrected import path
 
+// Maptiler key from the original file - assume it's set up externally if needed
 const MAPTILER_TOKEN = 'POKHjCgjvtPFhVMQXdBz';
+
+// Utility: simple custom modal replacement for alert()
+const showMessage = (text) => {
+    // In a real environment, you'd use a state variable and a custom modal component.
+    // Here we'll use a simple temporary DOM element.
+    const container = document.getElementById('notification-modal') || (() => {
+        const div = document.createElement('div');
+        div.id = 'notification-modal';
+        div.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);padding:20px 40px;background:rgba(0,0,0,0.8);color:white;border-radius:12px;z-index:10000;box-shadow:0 10px 30px rgba(0,255,255,0.4);backdrop-filter:blur(5px);font-family:sans-serif;font-weight:bold;text-align:center;';
+        document.body.appendChild(div);
+        return div;
+    })();
+    container.textContent = text;
+    container.style.display = 'block';
+    setTimeout(() => { container.style.display = 'none'; }, 3000);
+};
 
 export default function App() {
   const [currentView, setCurrentView] = useState('globe');
@@ -15,47 +31,98 @@ export default function App() {
   const [revealedTreasures, setRevealedTreasures] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [totalPoints, setTotalPoints] = useState(0);
-  const [player, setPlayer] = useState(() => playerService.getLocalPlayer());
+  const [player, setPlayer] = useState(null); // Managed after auth is ready
   const [usernameInput, setUsernameInput] = useState('');
   const [leaders, setLeaders] = useState([]);
-  // recentHistoryRef tracks recent picks; lastLocationName removed as it's no longer used
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  
   const recentHistoryRef = useRef([]);
 
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
 
+  // --- Initialization and Auth Effect ---
   useEffect(() => {
-    async function loadData() {
+    async function initApp() {
+        // 1. Load treasures
         await loadTreasureLists();
+        
+        // 2. Ensure Firebase Auth
+        const userId = await playerService.ensureAuth();
+        
+        // 3. Load or create player
+        const localPlayer = playerService.getLocalPlayer();
+        if (localPlayer) {
+            // Try to fetch latest score from Firestore if possible
+            const remotePlayer = await playerService.getPlayerFromFirestore(localPlayer.id);
+            if (remotePlayer) {
+                setPlayer({ ...localPlayer, score: remotePlayer.score || 0 });
+            } else {
+                setPlayer(localPlayer);
+            }
+            setTotalPoints(localPlayer.score || 0);
+        }
+        
         setIsLoading(false);
+        setIsAuthReady(true);
     }
-    loadData();
-    // initial leaderboard
-    (async () => {
-      const rows = await playerService.fetchLeaderboard(12);
-      setLeaders(rows || []);
-    })();
+    initApp();
   }, []);
 
+  // --- Leaderboard Subscription Effect ---
   useEffect(() => {
-    if (currentView === 'map' && currentLocation) {
-      const maplibregl = window.maplibregl;
+    let unsubscribe;
+    if (isAuthReady) {
+        // Subscribe to real-time leaderboard updates
+        unsubscribe = playerService.subscribeToLeaderboard(setLeaders, 12);
+    }
+    return () => { 
+      if (unsubscribe) unsubscribe(); 
+    };
+  }, [isAuthReady]);
+
+
+  // --- Map Effect ---
+  useEffect(() => {
+    const maplibregl = window.maplibregl;
+    if (currentView === 'map' && currentLocation && maplibregl) {
       if (mapRef.current) mapRef.current.remove();
-      mapRef.current = new maplibregl.Map({
+      
+      const newMap = new maplibregl.Map({
         container: mapContainerRef.current,
         style: `https://api.maptiler.com/maps/satellite/style.json?key=${MAPTILER_TOKEN}`,
         center: [currentLocation.lon, currentLocation.lat], 
         zoom: 3
       });
-      mapRef.current.on('load', () => {
-        new maplibregl.Marker().setLngLat([currentLocation.lon, currentLocation.lat]).addTo(mapRef.current);
-        mapRef.current.flyTo({ center: [currentLocation.lon, currentLocation.lat], zoom: 12, duration: 2500 });
+      mapRef.current = newMap;
+      
+      newMap.on('load', () => {
+        new maplibregl.Marker()
+          .setLngLat([currentLocation.lon, currentLocation.lat])
+          .setPopup(new maplibregl.Popup({ offset: 25 }).setText(currentLocation.name)) // Add a simple popup
+          .addTo(newMap);
+          
+        newMap.flyTo({ 
+          center: [currentLocation.lon, currentLocation.lat], 
+          zoom: 12, 
+          duration: 2500 
+        });
+        
         // call async prepare function without blocking the map load
         (async () => { await prepareTreasureCards(currentLocation); })();
       });
+      
+      // Cleanup map on unmount/re-run
+      return () => {
+        if (newMap) {
+          try { newMap.remove(); } catch (e) { console.warn('Error removing map:', e); }
+        }
+      };
     }
-  }, [currentView, currentLocation]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentView, currentLocation, isAuthReady]); 
   
+  // --- Card Animation Effect ---
   useEffect(() => {
     if (revealedTreasures.length > 0) {
         setTimeout(() => {
@@ -64,119 +131,109 @@ export default function App() {
     }
   }, [revealedTreasures]);
   
+  // Utility: pick a random element that's not the same as recent history (if possible)
+  const pickNonRepeating = (arr) => {
+    if (!arr || arr.length === 0) return null;
+    if (arr.length === 1) return arr[0];
+    const recent = recentHistoryRef.current || [];
+    const pool = arr.filter(a => !recent.includes(a.name || a.itemLabel?.value || a.itemLabel));
+    const finalPool = pool.length ? pool : arr;
+    const pick = finalPool[Math.floor(Math.random() * finalPool.length)];
+    const nameToRecord = pick.name || pick.itemLabel?.value || pick.itemLabel || '';
+    
+    // update history (keep last 8 entries)
+    if (nameToRecord) {
+        recent.unshift(nameToRecord);
+        recent.splice(8);
+        recentHistoryRef.current = recent;
+    }
+    return pick;
+  };
+  
   const handleSpin = async () => {
-    if (!player || !player.id) return alert('Please enter a username to play and save your player profile.');
-    if (isSpinning) return; // prevent rapid double clicks
+    if (!player || !player.id) return showMessage('Please create a player profile to start the hunt!');
+    if (isSpinning) return;
     setIsSpinning(true);
-    try {
-
-    // clear previous state for a smooth spin-to-spin transition
+    
+    // Clear previous state
     if (mapRef.current) {
-  try { mapRef.current.remove(); } catch { /* ignore */ }
-      mapRef.current = null;
+        try { mapRef.current.remove(); } catch { /* ignore */ }
+        mapRef.current = null;
     }
     setRevealedTreasures([]);
+    setCurrentLocation(null);
 
-  const chance = Math.random();
-  let treasure;
-  if (chance < 0.1) { 
-    // 1 in 10 chance to get jackpotLocation (KL University)
-    treasure = jackpotLocation;
-    console.log("JACKPOT / KL University spin! Landing on:", treasure.name);
-  } else if (chance < 0.35) { 
-    // Indian treasure - avoid immediate repeat
-      if (indianTreasures && indianTreasures.length > 0) {
-      treasure = pickNonRepeating(indianTreasures);
-      console.log("Spinning to Indian treasure:", treasure && treasure.name);
-    }
-  } else if (chance < 0.6) { 
-    // International treasure
-    // Prefer preloaded international list; if empty, pick from worldWonders
-    if (internationalTreasures && internationalTreasures.length > 0) {
-      treasure = pickNonRepeating(internationalTreasures);
-      console.log("Spinning to International treasure:", treasure && treasure.name);
-    } else {
-      treasure = pickNonRepeating(worldWonders);
-      console.log("Spinning to curated world wonder:", treasure && treasure.name);
-    }
-  } else if (chance < 0.85) { 
-    // Occasionally pick a world wonder directly for high points
-  treasure = pickNonRepeating(worldWonders);
-    console.log("Spinning to curated world wonder:", treasure && treasure.name);
-  } else {
-    // As a final fallback, prefer a world wonder
-  treasure = pickNonRepeating(worldWonders);
-    console.log("Fallback spin to curated world wonder:", treasure && treasure.name);
-  }
-    
-  // normalize location fields to expected names used across the app
-    let normalized = {
-      name: treasure.name || treasure.itemLabel || (treasure.itemLabel && treasure.itemLabel.value) || treasure.itemLabel,
-      lat: treasure.lat || treasure.latitude || (treasure.lat && treasure.lat.value) || (treasure.location && treasure.location.lat),
-      lon: treasure.lon || treasure.longitude || (treasure.lon && treasure.lon.value) || (treasure.location && treasure.location.lon),
-      description: treasure.description || treasure.shortDescription || treasure.desc || (treasure.description && treasure.description.value) || '',
-      imageUrl: treasure.imageUrl || treasure.image || null,
-      points: treasure.points || 50
-    };
-
-    // If description or image missing, try Wikipedia summary for better content
-    if ((!normalized.description || normalized.description.length < 30) || !normalized.imageUrl) {
-      try {
-        // sanitize name for wiki lookup: use first segment before comma and only short/simple titles
-        const candidate = (normalized.name || '').split(',')[0].trim();
-  const okForWiki = candidate && candidate.length > 2 && candidate.length < 80 && /^[\w\s\-']+$/.test(candidate);
-        if (okForWiki) {
-          const wiki = await fetchWikipediaSummary(candidate);
-          if (wiki) {
-            if (!normalized.description && wiki.extract) normalized.description = wiki.extract;
-            if (!normalized.imageUrl && wiki.image) normalized.imageUrl = wiki.image;
-          }
+    try {
+      const chance = Math.random();
+      let treasure;
+      
+      if (chance < 0.05) { 
+        // 1 in 20 chance to get jackpotLocation (KL University)
+        treasure = jackpotLocation;
+      } else if (chance < 0.40) { 
+        // Indian treasures (35% chance)
+        treasure = pickNonRepeating(indianTreasures);
+      } else if (chance < 0.75) { 
+        // International treasures (35% chance)
+        // Prefer preloaded international list; if empty, pick from worldWonders
+        if (internationalTreasures && internationalTreasures.length > 0) {
+          treasure = pickNonRepeating(internationalTreasures);
+        } else {
+          treasure = pickNonRepeating(worldWonders);
         }
-  } catch { /* ignore wiki fallback errors */ }
-    }
-
-    // final small fallback
-    if (!normalized.description) normalized.description = 'A fascinating place with rich culture, history and sights.';
-    if (!normalized.imageUrl) normalized.imageUrl = null;
-
-    // If coordinates missing, fall back to a random land location to avoid map errors
-    if (!isFinite(Number(normalized.lat)) || !isFinite(Number(normalized.lon))) {
-      try {
-        const fallback = await findRandomLandLocation();
-        normalized.lat = fallback.lat;
-        normalized.lon = fallback.lon;
-        // only fill in name/description if missing
-        if (!normalized.name) normalized.name = fallback.name;
-        if (!normalized.description || normalized.description.length < 20) normalized.description = fallback.description;
-      } catch {
-        // if even fallback fails, ensure coordinates to (0,0)
-        normalized.lat = normalized.lat || 0;
-        normalized.lon = normalized.lon || 0;
+      } else if (chance < 0.95) { 
+        // World Wonders (20% chance)
+        treasure = pickNonRepeating(worldWonders);
+      } else {
+        // Random Land Location (5% chance)
+        treasure = await findRandomLandLocation();
       }
-    }
 
-    setCurrentLocation(normalized);
-  // record into recentHistoryRef inside pickNonRepeating; no-op here
-    
-    // compute rotation only from normalized coordinates to avoid undefined errors
-    if (isFinite(Number(normalized.lat)) && isFinite(Number(normalized.lon))) {
+      if (!treasure) {
+          treasure = pickNonRepeating(worldWonders) || jackpotLocation; // Final guaranteed fallback
+      }
+        
+      let normalized = {
+        name: treasure.name || treasure.itemLabel || (treasure.itemLabel && treasure.itemLabel.value) || 'Unknown Location',
+        lat: treasure.lat || treasure.latitude || (treasure.lat && treasure.lat.value) || (treasure.location && treasure.location.lat),
+        lon: treasure.lon || treasure.longitude || (treasure.lon && treasure.lon.value) || (treasure.location && treasure.location.lon),
+        description: treasure.description || treasure.shortDescription || treasure.desc || (treasure.description && treasure.description.value) || '',
+        imageUrl: treasure.imageUrl || treasure.image || null,
+        points: treasure.points || 50
+      };
+
+      // Normalize coordinates to numbers, handle missing data
+      normalized.lat = isFinite(Number(normalized.lat)) ? Number(normalized.lat) : 0;
+      normalized.lon = isFinite(Number(normalized.lon)) ? Number(normalized.lon) : 0;
+      
+      // If the coordinate is (0,0) or invalid after all normalization, pick a random safe spot.
+      if (normalized.lat === 0 && normalized.lon === 0) {
+          const fallback = await findRandomLandLocation();
+          normalized.lat = fallback.lat;
+          normalized.lon = fallback.lon;
+          if (normalized.name === 'Unknown Location') normalized.name = fallback.name;
+          if (!normalized.description || normalized.description.length < 20) normalized.description = fallback.description;
+      }
+
+      setCurrentLocation(normalized);
+      
+      // Compute rotation
       const THREE = window.THREE;
       const target = new THREE.Vector3();
-      const phi = (90 - Number(normalized.lat)) * (Math.PI / 180);
-      const theta = (Number(normalized.lon) + 180) * (Math.PI / 180);
+      const phi = (90 - normalized.lat) * (Math.PI / 180);
+      const theta = (normalized.lon + 180) * (Math.PI / 180);
       target.setFromSphericalCoords(1, phi, theta);
       const mx = new THREE.Matrix4().lookAt(target, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0));
       const finalRotation = new THREE.Quaternion().setFromRotationMatrix(mx);
-      const spinQuaternion = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI * 10);
+      // Ensure a good dramatic spin, 8 full rotations
+      const spinQuaternion = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI * 16);
       setTargetRotation(spinQuaternion.multiply(finalRotation));
-    } else {
-      // if coordinates missing, don't set a rotation — avoid three.js errors
-      setTargetRotation(null);
-    }
-    triggerVortexAnimation();
-    } finally {
-      // don't immediately re-enable until cards animate; keep guard but ensure we clear on unexpected errors
-      // prepared cards will clear isSpinning after animation via prepareTreasureCards
+      
+      triggerVortexAnimation();
+    } catch (e) {
+      console.error('Spin failed:', e);
+      setIsSpinning(false); // Release spin lock on failure
+      showMessage('An error occurred during the spin. Try again!');
     }
   };
   
@@ -219,116 +276,67 @@ export default function App() {
       });
   };
 
-  // Utility: pick a random element that's not the same as recent history (if possible)
-  const pickNonRepeating = (arr) => {
-    if (!arr || arr.length === 0) return null;
-    if (arr.length === 1) return arr[0];
-    // Use a recent history buffer to avoid showing the same few places repeatedly
-    const recent = recentHistoryRef.current || [];
-    const pool = arr.filter(a => !recent.includes((a.name || a.itemLabel || (a.itemLabel && a.itemLabel.value))));
-    const finalPool = pool.length ? pool : arr; // if everything is recent, allow full pool
-    const pick = finalPool[Math.floor(Math.random() * finalPool.length)];
-    // update history (keep last 8 entries)
-    recent.unshift(pick.name || pick.itemLabel || (pick.itemLabel && pick.itemLabel.value) || '');
-    recent.splice(8);
-    recentHistoryRef.current = recent;
-    return pick;
-  };
-
   const prepareTreasureCards = async (location) => {
-    const fallbackImage = 'https://images.unsplash.com/photo-1582098782928-1b225529a4a7';
+    // Fallback placeholder that is guaranteed to work
+    const fallbackImage = 'https://placehold.co/1000x500/101827/fff?text=Image+Not+Found';
     const locationName = location.name || "Random Discovery";
-  // Prefer a real description; if missing synthesize a friendly brief using available metadata
-  const rawDescription = location.description || location.desc || location.shortDescription || '';
-  const metaHints = [];
-  if (location.instance) metaHints.push(location.instance);
-  if (location.country) metaHints.push(location.country);
-  const description = rawDescription || (metaHints.length ? `${location.name} is located in ${metaHints.join(', ')}.` : 'A place of significant interest.');
-    // Create a short, reader-friendly brief for the info card
-    const briefDescription = (() => {
-      if (!description) return '';
-      // Prefer first sentence if it's short enough
-      const firstSentence = description.split('. ')[0].trim();
-      if (firstSentence.length >= 40 && firstSentence.length <= 160) return firstSentence + (firstSentence.endsWith('.') ? '' : '.');
-      // Otherwise truncate to ~160 chars
-      const trimmed = description.replace(/\s+/g, ' ').trim();
-      if (trimmed.length <= 160) return trimmed;
-      return trimmed.slice(0, 157).trim() + '...';
-    })();
+    const rawDescription = location.description || location.desc || location.shortDescription || '';
+    const briefDescription = rawDescription ? rawDescription.replace(/\s+/g, ' ').trim().slice(0, 157).trim() + '...' : 'A fascinating place with rich culture, history and sights.';
     const points = location.points || 50;
-  // intentionally not using a separate imageUrl variable here; prefer photo selection logic below
 
-  // Prefer the location's own image (from Wikidata), then Wikipedia image, then curated worldWonders image if available, then fallback
-  let wikiImg = null;
-      try {
-      const candidate = (locationName || '').split(',')[0].trim();
-  const okForWiki = candidate && candidate.length > 2 && candidate.length < 80 && /^[\w\s\-']+$/.test(candidate);
-      if (okForWiki) {
-        const wiki = await fetchWikipediaSummary(candidate);
-        if (wiki && wiki.image) wikiImg = wiki.image;
-      }
-      } catch { /* ignore */ }
-
-    // If this location is one of our curated worldWonders, try a loose match (allow 'Colosseum, Rome')
-    const curated = worldWonders.find(w => {
-      const wn = (w.name||'').toLowerCase();
-      const ln = (locationName||'').toLowerCase();
-      return wn === ln || ln.includes(wn) || wn.includes(ln);
-    });
-
-  // Prefer Unsplash (single curated photo) for the photo card if API key is available, otherwise fall back to Wikimedia
-  let unsplash = [];
-  try { unsplash = await fetchUnsplashImages(locationName, 1); } catch { /* ignore */ }
-  let wmImages = [];
-  try { wmImages = await fetchWikimediaImages(locationName, 2); } catch { /* ignore */ }
-
-  // If Wikimedia search returned nothing and wikiImg is empty, try a broader query (add 'landmark')
-  if ((!wmImages || wmImages.length === 0) && !wikiImg) {
-    try {
-      const extra = await fetchWikimediaImages(`${locationName} landmark`, 2);
-      if (extra && extra.length) wmImages = (wmImages || []).concat(extra.filter(Boolean));
+    // --- Image Selection Logic (Card 2 Reliability Focus) ---
+    // C2: Photo-only card MUST have a reliable image. Prioritize Unsplash > Location Image > Wikimedia > Fallback
+    let photoCardImage = location.imageUrl || fallbackImage; // Start with location's Wikidata image or fallback
+    
+    // 1. Try Unsplash for the best visual photo (priority for card 2)
+    let unsplashImages = [];
+    try { 
+        unsplashImages = await fetchUnsplashImages(locationName, 2); 
     } catch { /* ignore */ }
-  }
+    
+    if (unsplashImages.length > 0) {
+        photoCardImage = unsplashImages[0];
+    } 
+    
+    // 2. Fallback to Wikimedia search if Unsplash fails/empty and we need a better image than the initial location.imageUrl
+    if (photoCardImage === fallbackImage || photoCardImage === location.imageUrl) {
+        let wmImages = [];
+        try { wmImages = await fetchWikimediaImages(locationName, 1); } catch { /* ignore */ }
+        if (wmImages.length > 0) {
+            photoCardImage = wmImages[0];
+        }
+    }
+    
+    // Check if this is the jackpot and override the photo image if needed (must be done last)
+    const isJackpot = location.name && location.name.toLowerCase().includes('kl university');
+    if (isJackpot && jackpotLocation.imageUrl) {
+        photoCardImage = jackpotLocation.imageUrl;
+    }
+    
+    // C1: Info Card image (optional, typically text-focused but keeping the initial setting if available)
+    const infoCardImage = location.imageUrl || null;
 
-  const firstCardImage = location.imageUrl || wikiImg || (wmImages[0]) || (curated && curated.imageUrl) || fallbackImage;
+    // Build richer informational text for the info card
+    const metaParts = [];
+    if (location.country) metaParts.push(`Country: ${location.country}`);
+    const lat = location.lat || 0;
+    const lon = location.lon || 0;
+    if (isFinite(lat) && isFinite(lon)) metaParts.push(`Coordinates: ${lat.toFixed(3)}, ${lon.toFixed(3)}`);
+    metaParts.push(`Points: ${points}`);
 
-  // Debug logs to understand why images may be missing
-  try {
-    console.log('prepareTreasureCards:', { locationName, hasLocationImage: !!location.imageUrl, unsplashCount: (unsplash || []).length, wmCount: (wmImages || []).length, wikiImgPresent: !!wikiImg, curatedPresent: !!curated });
-  } catch { /* ignore console issues */ }
-
-  // If this is the jackpot KL University, force the jackpot image (user-provided)
-  const isJackpot = (locationName && (locationName.toLowerCase().includes('kl university') || locationName.toLowerCase().includes('klu')));
-  let photoCardImage = null;
-  if (isJackpot && jackpotLocation && jackpotLocation.imageUrl) {
-    photoCardImage = jackpotLocation.imageUrl;
-  } else {
-    // For second card prefer the location's own image first (e.g. KL University), then Unsplash, then wikiImg, then Wikimedia, then curated/fallback
-    photoCardImage = location.imageUrl || (unsplash && unsplash.length ? unsplash[0] : (wikiImg || (wmImages[0] && wmImages[0] !== firstCardImage ? wmImages[0] : ((curated && curated.imageUrl) || fallbackImage))));
-  }
-
-    // Build a richer informational text for the info card (no photo)
-  const metaParts = [];
-  if (location.instance) metaParts.push(`Type: ${location.instance}`);
-  if (location.country) metaParts.push(`Country: ${location.country}`);
-  const lat = location.lat || location.latitude || (location.lat && location.lat.value) || (location.location && location.location.lat) || null;
-  const lon = location.lon || location.longitude || (location.lon && location.lon.value) || (location.location && location.location.lon) || null;
-  if (isFinite(Number(lat)) && isFinite(Number(lon))) metaParts.push(`Coordinates: ${Number(lat).toFixed(3)}, ${Number(lon).toFixed(3)}`);
-  metaParts.push(`Points: ${points}`);
-
-    const longInfo = `${briefDescription || description}\n\n${metaParts.join(' • ')}`;
+    const longInfo = `${briefDescription}\n\n${metaParts.join(' • ')}`;
 
     const cardsData = [
       { 
         type: 'info',
         name: locationName,
         fact: longInfo,
-        imageUrl: null, // explicitly no image for the first card
+        imageUrl: infoCardImage, // Keeping location's image here if it exists for the info card layout
       },
       { 
         type: 'photo',
         name: `Photo of ${locationName}`,
-        imageUrl: photoCardImage,
+        imageUrl: photoCardImage, // The reliable, curated image for the second card
       },
       { 
         type: 'points',
@@ -337,44 +345,62 @@ export default function App() {
       }
     ];
 
-    // Note: points are added when the user reveals the points card
     setRevealedTreasures(cardsData);
     // allow spinning again after cards are prepared/animated
     setTimeout(() => setIsSpinning(false), 1400);
   };
 
-  const handlePointsReveal = (points) => {
-    setTotalPoints(prev => prev + (points || 0));
-    // persist per-player score
-    try {
-      if (player && player.id) {
-        const newScore = (player.score || 0) + (points || 0);
-        const updated = { ...player, score: newScore, updatedAt: Date.now() };
-        setPlayer(updated);
-        playerService.setLocalPlayer(updated);
-        playerService.savePlayerScore(player.id, player.username || 'player', newScore);
-      }
-    } catch (e) { console.warn('Failed to persist player score', e); }
+  const handlePointsReveal = async (points) => {
+    const newTotalPoints = (player.score || 0) + (points || 0);
+    setTotalPoints(newTotalPoints);
+    
+    // Update local state first
+    const updatedPlayer = { ...player, score: newTotalPoints, updatedAt: Date.now() };
+    setPlayer(updatedPlayer);
+    
+    // Persist score to Firestore (this will trigger a leaderboard update)
+    if (player && player.id) {
+        await playerService.savePlayerScore(player.id, player.username || 'player', newTotalPoints);
+    }
   };
 
-  const handleCreatePlayer = () => {
+  const handleCreatePlayer = async () => {
     const name = (usernameInput || '').trim();
-    if (!name || name.length < 2) return alert('Please enter a username (2+ chars)');
+    if (!name || name.length < 2) return showMessage('Please enter a username (2+ characters) to play.');
+    
+    // 1. Ensure Auth is ready
+    if (!isAuthReady) return showMessage('App is still initializing. Please wait a moment.');
+    
+    // 2. Generate new ID
     const id = playerService.generatePlayerId(name);
-    const p = { id, username: name, score: totalPoints || 0, createdAt: Date.now() };
+    
+    // 3. Check if player already exists in local storage with the same name (not strictly needed with new ID, but good practice)
+    
+    // 4. Check Firestore for existing score by ID if possible (though new ID should prevent issues)
+    const firestorePlayer = await playerService.getPlayerFromFirestore(id);
+    const initialScore = firestorePlayer?.score || 0;
+    
+    const p = { id, username: name, score: initialScore, createdAt: Date.now() };
     playerService.setLocalPlayer(p);
     setPlayer(p);
+    setTotalPoints(initialScore);
     setUsernameInput('');
+
+    // Ensure the new player is immediately saved to Firestore with their starting score (0 or existing)
+    await playerService.savePlayerScore(p.id, p.username, p.score);
+
+    showMessage(`Welcome, ${name}! Your score is now tracked on the leaderboard.`);
   };
 
   const handleSignOut = () => {
     playerService.setLocalPlayer(null);
     setPlayer(null);
+    setTotalPoints(0);
   };
 
-  const refreshLeaderboard = async () => {
-    const rows = await playerService.fetchLeaderboard(12);
-    setLeaders(rows || []);
+  const handleEditUsername = () => {
+      setUsernameInput(player.username);
+      handleSignOut(); // Force sign-out to show input for re-entry
   };
 
   return (
@@ -396,51 +422,59 @@ export default function App() {
         </div>
       </div>
       <div className="vortex-container" />
-      {/* Sidebar moved here so it's a top-level sibling and not inside the floating UI container */}
+      
+      {/* Sidebar - Now includes transparent/slitherio-style look */}
       <aside className="sidebar">
         <h3>Explorer Hub</h3>
         <div className="player-panel">
-          {player && player.username ? (
+          {player && player.id ? (
             <>
-              <div className="player-info"><div>{player.username}</div><div>{player.score || 0} pts</div></div>
+              <div className="player-info">
+                <div>Player: **{player.username}**</div>
+                <div>Score: **{player.score || 0} pts**</div>
+              </div>
               <div className="player-controls">
-                <button className="btn ghost" onClick={() => { setUsernameInput(''); document.body.focus(); }}>Change</button>
+                <button className="btn ghost" onClick={handleEditUsername}>Change Name</button>
                 <button className="btn" onClick={handleSignOut}>Sign Out</button>
-                <button className="btn primary" onClick={refreshLeaderboard}>Refresh</button>
               </div>
             </>
           ) : (
             <>
-              <input className="username-input" placeholder="Enter username" value={usernameInput} onChange={e => setUsernameInput(e.target.value)} />
+              <input className="username-input" placeholder="Enter username (for leaderboard)" value={usernameInput} onChange={e => setUsernameInput(e.target.value)} />
               <div className="player-controls">
-                <button className="btn primary" onClick={handleCreatePlayer}>Create Player</button>
-                <button className="btn ghost" onClick={refreshLeaderboard}>Refresh LB</button>
+                <button className="btn primary" onClick={handleCreatePlayer} disabled={isLoading || usernameInput.length < 2}>Create Player</button>
               </div>
             </>
           )}
         </div>
         <div className="leaderboard">
-          <h4>Leaderboard</h4>
+          <h4>Top Explorers</h4>
           {leaders && leaders.length ? (
             <ol>
               {leaders.map((p, i) => (
-                <li key={p.id || i}><span className="rank">#{i+1}</span> <strong>{p.username || 'player'}</strong> <span style={{marginLeft:'auto'}}>{p.score || 0} pts</span></li>
+                // Highlight current player
+                <li key={p.id || i} className={player?.id === p.id ? 'current-player' : ''}>
+                  <span className="rank">#{i+1}</span> 
+                  <strong className="username-text">{p.username || 'player'}</strong> 
+                  <span className="score-text" style={{marginLeft:'auto'}}>{p.score || 0} pts</span>
+                </li>
               ))}
             </ol>
           ) : (
-            <div className="empty">No scores yet</div>
+            <div className="empty">No scores yet. Be the first!</div>
           )}
         </div>
+        <p className="user-id-display">Your Player ID: {player?.id || 'Not Signed In'}</p>
       </aside>
 
       <div className="ui-container">
           <button 
             className="spin-button" 
             onClick={handleSpin} 
-            disabled={isLoading || isSpinning} 
+            disabled={isLoading || isSpinning || !player?.id} 
             style={{display: currentView === 'globe' ? 'block' : 'none'}}
           >
-            {isLoading ? 'Loading Treasures...' : (isSpinning ? 'Spinning...' : 'Find Treasure!')}
+            {isLoading ? 'Loading Treasures...' : (!player?.id ? 'Enter Username to Play' : (isSpinning ? 'Spinning...' : 'Find Treasure!'))}
           </button>
           <button 
             className="play-again-button" 
@@ -449,7 +483,6 @@ export default function App() {
           >
             Spin Again!
           </button>
-          
       </div>
     </>
   );

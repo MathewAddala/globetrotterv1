@@ -71,9 +71,10 @@ html, body {
     right: 20px;
     width: 360px;
     max-height: calc(100vh - 80px);
-    background: linear-gradient(180deg, rgba(6,6,12,0.95), rgba(2,2,6,0.88));
-    border: 1px solid rgba(0,196,255,0.22);
-    box-shadow: 0 20px 50px rgba(0,196,255,0.12);
+    /* SLITHER.IO-STYLE TRANSPARENCY */
+    background: rgba(6, 6, 12, 0.4); /* Much more transparent */
+    border: 1px solid rgba(0, 196, 255, 0.1);
+    box-shadow: 0 5px 15px rgba(0, 196, 255, 0.08);
     border-radius: 12px;
     padding: 14px;
     color: #bfefff;
@@ -95,6 +96,8 @@ html, body {
     display: flex;
     flex-direction: column;
     gap: 8px;
+    border-bottom: 1px dashed rgba(0, 196, 255, 0.1);
+    padding-bottom: 12px;
 }
 
 .player-panel .username-input {
@@ -113,23 +116,73 @@ html, body {
 .player-info { font-size:0.95em; color:#c7f7ff; display:flex; justify-content:space-between; }
 
 .leaderboard {
-    background: linear-gradient(180deg, rgba(3,10,20,0.35), rgba(2,6,12,0.25));
+    /* More transparent background for slither.io style */
+    background: rgba(3,10,20,0.3);
     border: 1px solid rgba(0,200,255,0.06);
     padding: 10px;
     border-radius: 8px;
-    overflow: auto;
+    overflow-y: auto;
     max-height: 320px;
+    box-shadow: inset 0 0 10px rgba(0, 196, 255, 0.05);
 }
-.leaderboard h4 { margin:0 0 6px 0; color:#8ff9ff; font-size:1.05em }
-.leaderboard ol { margin: 0; padding-left: 20px; color:#e6fbff }
-.leaderboard li { margin:6px 0; display:flex; justify-content:space-between; gap:8px; }
-.leaderboard .rank { color:#89f6ff; font-weight:700; margin-right:8px }
+.leaderboard h4 { margin:0 0 6px 0; color:#8ff9ff; font-size:1.05em; border-bottom: 1px solid rgba(0, 196, 255, 0.1); padding-bottom: 4px;}
+.leaderboard ol { margin: 0; padding-left: 0; list-style: none; color:#e6fbff }
+.leaderboard li { 
+    margin:4px 0; 
+    padding: 4px 0;
+    display:flex; 
+    justify-content:space-between; 
+    gap:8px; 
+    font-size: 0.9em;
+    border-radius: 4px;
+}
+.leaderboard li.current-player {
+    background: rgba(0, 196, 255, 0.1);
+    padding: 4px 8px;
+    font-weight: bold;
+    color: #fff;
+    border-left: 3px solid #7afcff;
+}
+.leaderboard .rank { 
+    color:#7afcff; 
+    font-weight:700; 
+    margin-right:8px;
+    width: 20px;
+    text-align: right;
+}
+.leaderboard .username-text { flex-grow: 1; }
+.leaderboard .score-text { color: #fff; }
+
+.user-id-display {
+    font-size: 0.7em;
+    color: rgba(255, 255, 255, 0.4);
+    word-break: break-all;
+    margin: 0;
+    padding-top: 8px;
+    border-top: 1px dashed rgba(0, 196, 255, 0.1);
+}
 
 /* Responsive: collapse sidebar on small screens */
 @media (max-width: 880px) {
     .sidebar { display: none; }
+    .treasure-card-wrapper {
+        flex-direction: column;
+        align-items: center;
+        bottom: 80px;
+        gap: 10px;
+    }
+    .treasure-card {
+        width: 90vw;
+        max-width: 400px;
+        height: 300px;
+    }
+    .treasure-image, .photo-img, .info-spacer {
+        height: 150px;
+    }
+    .treasure-info {
+        height: calc(300px - 150px);
+    }
 }
-
 .vortex-particle {
     position: absolute;
     background: radial-gradient(circle, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0) 70%);
@@ -137,10 +190,7 @@ html, body {
     width: 300px;
     height: 300px;
 }
-
-
 /* New Treasure Card Styles */
-/* ADD THIS NEW CODE FOR THE TREASURE CARDS */
 .treasure-card-wrapper {
     position: absolute;
     bottom: 150px; /* CHANGED: Moved cards higher */
