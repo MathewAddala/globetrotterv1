@@ -1,27 +1,4 @@
-import { getAuth, signInWithCustomToken, signInAnonymously } from 'firebase/auth';
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, doc, setDoc, updateDoc, onSnapshot, query, orderBy, limit, serverTimestamp, getDocs, where } from 'firebase/firestore';
-
-// --- FIREBASE INITIALIZATION & CORE VARIABLES (Must use provided globals) ---
-// Set up global environment variables for Firebase (required for persistent multiplayer)
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
-let firestore = null;
-let app = null;
-
-if (firebaseConfig && Object.keys(firebaseConfig).length > 0) {
-    try {
-        app = initializeApp(firebaseConfig);
-        firestore = getFirestore(app);
-        console.log('Firebase App and Firestore initialized.');
-    } catch (e) {
-        console.error('Firebase initialization failed:', e);
-    }
-} else {
-    console.warn('Firebase configuration not found. Leaderboard will be disabled.');
-}
+// No Firebase/Firestore in local-only build: this file provides treasure data and helpers only
 
 // Global variable definitions
 export let indianTreasures = [];

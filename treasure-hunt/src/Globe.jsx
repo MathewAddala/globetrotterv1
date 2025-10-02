@@ -50,7 +50,15 @@ const Globe = ({ isSpinning, targetRotation, isVisible }) => {
     };
     animate();
     
-    return () => { if (currentMount) { currentMount.removeChild(renderer.domElement); } };
+    // fade-in the canvas for smooth transition
+    if (currentMount && currentMount.firstChild) {
+      const canvas = currentMount.firstChild;
+      canvas.classList.add('globe-fade-enter');
+      // small timeout to allow class to apply before triggering the active state
+      setTimeout(() => canvas.classList.add('globe-fade-enter-active'), 20);
+    }
+
+    return () => { if (currentMount) { try { currentMount.removeChild(renderer.domElement); } catch { } } };
   }, [threeRef]);
 
   // Effect to handle animations based on props from App.jsx

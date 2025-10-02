@@ -8,6 +8,96 @@ html, body {
     font-family: sans-serif;
 }
 
+/* Home screen centered layout */
+.home-container {
+    position: absolute;
+    inset: 0; /* top:0; right:0; bottom:0; left:0 */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    z-index: 1000; /* above globe/map */
+    padding: 24px;
+    pointer-events: auto;
+    /* subtle vignette so content reads against the black background */
+    background: linear-gradient(180deg, rgba(2,8,18,0.6), rgba(0,0,0,0.45));
+    backdrop-filter: blur(4px) saturate(120%);
+
+}
+
+.home-header { text-align: center; color: #dffcff; }
+.home-header h1 { margin: 0 0 6px 0; font-size: 2.4rem; letter-spacing: -0.5px; color: #7ef0ff; text-shadow: 0 6px 28px rgba(0,240,255,0.08); }
+.home-header p { margin: 0; color: #bfefff; opacity: 0.9; }
+
+.leaderboard-panel { width: 420px; max-width: calc(100% - 48px); }
+
+.player-entry-card { width: 420px; max-width: calc(100% - 48px); display:flex; justify-content:center; align-items:center; }
+.player-sign-up { display:flex; gap:12px; align-items:center; }
+.username-input { padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02); color: #e6fbff; min-width: 220px; }
+
+.btn.big { padding: 12px 18px; font-size: 1rem; border-radius: 12px; }
+
+/* Gamified home styles */
+.home-container.gamified { gap: 18px; padding: 36px 24px; }
+.home-header .glow { font-family: 'Orbitron', 'Press Start 2P', system-ui, sans-serif; font-size: 3rem; color: #ffd86b; text-shadow: 0 6px 30px rgba(255,216,107,0.09), 0 0 40px rgba(255,160,40,0.04); }
+.home-header .tagline { font-family: 'Major Mono Display', monospace; color: #ffeecf; opacity: 0.95; margin-top: 6px; }
+
+.home-main-row { display:flex; gap:28px; align-items:flex-start; justify-content:center; }
+.chest-area { width:200px; height:160px; display:flex; align-items:center; justify-content:center; transform-origin:center; }
+
+.leaderboard-panel.gamified { width: 420px; padding: 14px; background: linear-gradient(180deg, rgba(12,10,20,0.7), rgba(6,6,12,0.6)); border-radius: 12px; border: 1px solid rgba(255,200,120,0.06); }
+.leaderboard-list { margin:8px 0 0 0; padding:0; }
+.leaderboard-list li { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px; }
+.leaderboard-list li .username-text { color: #fff; font-weight:700; }
+.leaderboard-list li .score-text { color: #ffd86b; font-weight:700; }
+
+.leaderboard-panel.gamified .leaderboard h4 { color: #ffd86b; }
+
+.player-entry-card.gamified { margin-top: 10px; }
+.name-highlight { color: #ffd36b; font-weight: 800; text-shadow: 0 2px 20px rgba(255,200,120,0.15); }
+.score-highlight { color: #7efcff; font-weight:700; }
+
+.btn.primary.big.gamified-start { background: linear-gradient(90deg,#ffd24d,#ff7a18); color:#241200; box-shadow: 0 10px 40px rgba(255,120,0,0.25); transform: translateZ(0); }
+.btn.primary.big.gamified-start:disabled { opacity: 0.5; transform: none; }
+
+/* small responsive tweak */
+@media (max-width: 760px) {
+    .home-main-row { flex-direction: column; gap: 18px; }
+}
+
+/* Cinematic overlay for Home->Globe transition */
+.cinema-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 99999;
+    pointer-events: none;
+    opacity: 0;
+    display: block;
+}
+.cinema-overlay.visible { opacity: 1; }
+.cinema-overlay .cinema-particle, .cinema-particle {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #fff 0%, rgba(255,255,255,0.8) 30%, rgba(255,140,0,0.0) 100%);
+    box-shadow: 0 6px 18px rgba(255,180,80,0.6);
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+}
+
+/* small helper for flicker */
+.glow-flicker { animation: flicker 1.6s infinite ease-in-out; }
+@keyframes flicker { 0% { opacity: 1 } 50% { opacity: 0.84 } 100% { opacity: 1 } }
+
+/* Prevent overlap: Home content sits above other layers */
+.home-container { position: relative; z-index: 1002; }
+
+/* Globe mount fade-in helpers (Globe.jsx will set inline opacity/transform then animate) */
+.globe-fade-enter { opacity: 0; transform: scale(1.06); }
+.globe-fade-enter-active { transition: opacity 900ms ease, transform 900ms cubic-bezier(.2,.8,.2,1); opacity: 1; transform: scale(1); }
+
 /* Make box-sizing predictable so padding is included in declared heights */
 *, *::before, *::after { box-sizing: border-box; }
 
@@ -116,15 +206,35 @@ html, body {
 .player-info { font-size:0.95em; color:#c7f7ff; display:flex; justify-content:space-between; }
 
 .leaderboard {
-    /* More transparent background for slither.io style */
-    background: rgba(3,10,20,0.3);
-    border: 1px solid rgba(0,200,255,0.06);
-    padding: 10px;
-    border-radius: 8px;
-    overflow-y: auto;
-    max-height: 320px;
-    box-shadow: inset 0 0 10px rgba(0, 196, 255, 0.05);
+        /* More transparent background for slither.io style */
+        background: rgba(3,10,20,0.3);
+        border: 1px solid rgba(0,200,255,0.06);
+        padding: 10px;
+        border-radius: 8px;
+        /* allow internal sections to scroll, keep container height bounded */
+        max-height: 360px;
+        box-shadow: inset 0 0 10px rgba(0, 196, 255, 0.05);
+        display: flex;
+        flex-direction: column;
 }
+.leaderboard-top-fixed { margin: 0; padding: 0; list-style: none; }
+.leaderboard-top-fixed li { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px; }
+.leaderboard-scroll { /* scroll only the remainder */
+    max-height: 220px; overflow-y: auto; padding-right: 6px; margin-top: 6px;
+}
+
+/* small banner that shows briefly when entering top players */
+.leaderboard-top-entry {
+    background: linear-gradient(90deg,#14b8ff,#63e0ff);
+    color: #002029;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    box-shadow: 0 6px 18px rgba(0, 196, 255, 0.08);
+    text-align: center;
+}
+.leaderboard-footer { margin-top: 8px; color: rgba(255,255,255,0.6); font-size: 0.8em; }
 .leaderboard h4 { margin:0 0 6px 0; color:#8ff9ff; font-size:1.05em; border-bottom: 1px solid rgba(0, 196, 255, 0.1); padding-bottom: 4px;}
 .leaderboard ol { margin: 0; padding-left: 0; list-style: none; color:#e6fbff }
 .leaderboard li { 

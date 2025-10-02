@@ -3,6 +3,7 @@ import Globe from './Globe.jsx'; // Corrected import path
 import TreasureCard from './TreasureCard.jsx'; // Corrected import path
 import playerService from './services/playerService.js'; // Corrected import path
 import { loadTreasureLists, findRandomLandLocation, indianTreasures, internationalTreasures, jackpotLocation, fetchWikipediaSummary, worldWonders, fetchWikimediaImages, fetchUnsplashImages } from './services/dataService.js'; // Corrected import path
+import Home from './Home.jsx';
 
 // Maptiler key from the original file - assume it's set up externally if needed
 const MAPTILER_TOKEN = 'POKHjCgjvtPFhVMQXdBz';
@@ -24,7 +25,7 @@ const showMessage = (text) => {
 };
 
 export default function App() {
-  const [currentView, setCurrentView] = useState('globe');
+  const [currentView, setCurrentView] = useState('home');
   const [isSpinning, setIsSpinning] = useState(false);
   const [targetRotation, setTargetRotation] = useState(null);
   const [currentLocation, setCurrentLocation] = useState(null);
@@ -47,27 +48,25 @@ export default function App() {
         // 1. Load treasures
         await loadTreasureLists();
         
-        // 2. Ensure Firebase Auth
-        const userId = await playerService.ensureAuth();
-        
-        // 3. Load or create player
-        const localPlayer = playerService.getLocalPlayer();
-        if (localPlayer) {
-            // Try to fetch latest score from Firestore if possible
-            const remotePlayer = await playerService.getPlayerFromFirestore(localPlayer.id);
-            if (remotePlayer) {
-                setPlayer({ ...localPlayer, score: remotePlayer.score || 0 });
-            } else {
-                setPlayer(localPlayer);
-            }
-            setTotalPoints(localPlayer.score || 0);
-        }
+    // 2. Load local player (localStorage-backed)
+    const localPlayer = playerService.getLocalPlayer();
+    if (localPlayer) {
+      setPlayer(localPlayer);
+      setTotalPoints(localPlayer.score || 0);
+    }
         
         setIsLoading(false);
         setIsAuthReady(true);
     }
     initApp();
   }, []);
+
+  const handleStartFromHome = (p) => {
+    // p is the player object created/selected in Home
+    setPlayer(p);
+    setTotalPoints(p.score || 0);
+    setCurrentView('globe');
+  };
 
   // --- Leaderboard Subscription Effect ---
   useEffect(() => {
@@ -364,36 +363,10 @@ export default function App() {
     }
   };
 
-  const handleCreatePlayer = async () => {
-    const name = (usernameInput || '').trim();
-    if (!name || name.length < 2) return showMessage('Please enter a username (2+ characters) to play.');
-    
-    // 1. Ensure Auth is ready
-    if (!isAuthReady) return showMessage('App is still initializing. Please wait a moment.');
-    
-    // 2. Generate new ID
-    const id = playerService.generatePlayerId(name);
-    
-    // 3. Check if player already exists in local storage with the same name (not strictly needed with new ID, but good practice)
-    
-    // 4. Check Firestore for existing score by ID if possible (though new ID should prevent issues)
-    const firestorePlayer = await playerService.getPlayerFromFirestore(id);
-    const initialScore = firestorePlayer?.score || 0;
-    
-    const p = { id, username: name, score: initialScore, createdAt: Date.now() };
-    playerService.setLocalPlayer(p);
-    setPlayer(p);
-    setTotalPoints(initialScore);
-    setUsernameInput('');
-
-    // Ensure the new player is immediately saved to Firestore with their starting score (0 or existing)
-    await playerService.savePlayerScore(p.id, p.username, p.score);
-
-    showMessage(`Welcome, ${name}! Your score is now tracked on the leaderboard.`);
-  };
+  // player creation is now handled by Home; App no longer exposes a direct create function
 
   const handleSignOut = () => {
-    playerService.setLocalPlayer(null);
+    playerService.removeActivePlayer();
     setPlayer(null);
     setTotalPoints(0);
   };
@@ -405,85 +378,64 @@ export default function App() {
 
   return (
     <>
-      <Globe 
-        isSpinning={isSpinning}
-        targetRotation={targetRotation}
-        isVisible={currentView === 'globe'} 
-      />
+      {currentView === 'globe' && (
+        <Globe 
+          isSpinning={isSpinning}
+          targetRotation={targetRotation}
+          isVisible={true}
+        />
+      )}
       <div 
         className="map-container" 
         ref={mapContainerRef} 
         style={{ opacity: currentView === 'map' ? 1 : 0, pointerEvents: currentView === 'map' ? 'auto' : 'none' }} 
       >
         <div className="treasure-card-wrapper">
-      {revealedTreasures.map((treasure, index) => (
-        <TreasureCard key={index} treasure={treasure} onPointsReveal={handlePointsReveal} />
-      ))}
+        {revealedTreasures.map((treasure, index) => (
+          <TreasureCard key={index} treasure={treasure} onPointsReveal={handlePointsReveal} />
+        ))}
+          </div>
         </div>
-      </div>
-      <div className="vortex-container" />
-      
-      {/* Sidebar - Now includes transparent/slitherio-style look */}
-      <aside className="sidebar">
-        <h3>Explorer Hub</h3>
-        <div className="player-panel">
-          {player && player.id ? (
-            <>
-              <div className="player-info">
-                <div>Player: **{player.username}**</div>
-                <div>Score: **{player.score || 0} pts**</div>
-              </div>
-              <div className="player-controls">
-                <button className="btn ghost" onClick={handleEditUsername}>Change Name</button>
-                <button className="btn" onClick={handleSignOut}>Sign Out</button>
-              </div>
-            </>
-          ) : (
-            <>
-              <input className="username-input" placeholder="Enter username (for leaderboard)" value={usernameInput} onChange={e => setUsernameInput(e.target.value)} />
-              <div className="player-controls">
-                <button className="btn primary" onClick={handleCreatePlayer} disabled={isLoading || usernameInput.length < 2}>Create Player</button>
-              </div>
-            </>
-          )}
-        </div>
-        <div className="leaderboard">
-          <h4>Top Explorers</h4>
-          {leaders && leaders.length ? (
-            <ol>
-              {leaders.map((p, i) => (
-                // Highlight current player
-                <li key={p.id || i} className={player?.id === p.id ? 'current-player' : ''}>
-                  <span className="rank">#{i+1}</span> 
-                  <strong className="username-text">{p.username || 'player'}</strong> 
-                  <span className="score-text" style={{marginLeft:'auto'}}>{p.score || 0} pts</span>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <div className="empty">No scores yet. Be the first!</div>
-          )}
-        </div>
-        <p className="user-id-display">Your Player ID: {player?.id || 'Not Signed In'}</p>
-      </aside>
+        <div className="vortex-container" />
 
-      <div className="ui-container">
-          <button 
-            className="spin-button" 
-            onClick={handleSpin} 
-            disabled={isLoading || isSpinning || !player?.id} 
-            style={{display: currentView === 'globe' ? 'block' : 'none'}}
-          >
-            {isLoading ? 'Loading Treasures...' : (!player?.id ? 'Enter Username to Play' : (isSpinning ? 'Spinning...' : 'Find Treasure!'))}
-          </button>
-          <button 
-            className="play-again-button" 
-            onClick={handleReset} 
-            style={{display: currentView === 'map' ? 'block' : 'none'}}
-          >
-            Spin Again!
-          </button>
-      </div>
-    </>
-  );
-}
+  {currentView === 'home' ? (
+  <Home onStartGame={handleStartFromHome} player={player} setPlayer={setPlayer} totalPoints={totalPoints} leaders={leaders} currentPlayerId={player?.id} />
+        ) : (
+          <>
+            {/* in-game UI container */}
+            <div className="ui-container">
+              <button 
+                className="spin-button" 
+                onClick={handleSpin} 
+                disabled={isLoading || isSpinning || !player?.id} 
+                style={{display: currentView === 'globe' ? 'block' : 'none'}}
+              >
+                {isLoading ? 'Loading Treasures...' : (!player?.id ? 'Enter Username to Play' : (isSpinning ? 'Spinning...' : 'Find Treasure!'))}
+              </button>
+              <button 
+                className="play-again-button" 
+                onClick={handleReset} 
+                style={{display: currentView === 'map' ? 'block' : 'none'}}
+              >
+                Spin Again!
+              </button>
+            </div>
+            {/* Small profile panel top-right during play */}
+            {player && (
+              <div className="sidebar" style={{ right: 20, top: 20, width: 220 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: '0.9em', color: '#bfefff', fontWeight: 700 }}>{player.username}</div>
+                    <div style={{ fontSize: '0.75em', color: '#dcefff' }}>{player.score || 0} pts</div>
+                  </div>
+                  <div>
+                    <button className="btn ghost" onClick={() => { handleSignOut(); setCurrentView('home'); }}>Logout</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </>
+    );
+  }
