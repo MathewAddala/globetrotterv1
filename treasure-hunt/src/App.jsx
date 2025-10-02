@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Globe from './Globe.jsx';
 import TreasureCard from './TreasureCard.jsx';
 import playerService from './services/playerService.js';
-import { loadTreasureLists, findRandomLandLocation, indianTreasures, internationalTreasures, jackpotLocation, worldWonders } from './services/dataService.js';
+import { loadTreasureLists, findRandomLandLocation, indianTreasures, internationalTreasures, jackpotLocation, worldWonders, fetchAndCacheImageUrls } from './services/dataService.js';
 import Home from './Home.jsx';
 
 const MAPTILER_TOKEN = 'POKHjCgjvtPFhVMQXdBz';
@@ -43,7 +43,6 @@ export default function App() {
   useEffect(() => {
     let unsubscribe;
     if (isAuthReady) {
-        // This subscription now reliably updates the leaders state
         unsubscribe = playerService.subscribeToLeaderboard(setLeaders, 10);
     }
     return () => { 
@@ -76,7 +75,9 @@ export default function App() {
           duration: 2500 
         });
         
-        prepareTreasureCards(currentLocation);
+        setTimeout(() => {
+            prepareTreasureCards(currentLocation);
+        }, 1000);
       });
       
       return () => {
@@ -96,14 +97,18 @@ export default function App() {
     const finalPool = pool.length ? pool : arr;
     const pick = finalPool[Math.floor(Math.random() * finalPool.length)];
     recent.unshift(pick.name);
-    recent.splice(8);
+    recent.splice(15);
     recentHistoryRef.current = recent;
     return pick;
   };
   
   const handleSpin = async () => {
-    if (isSpinning) return;
+    if (isSpinning || (player && player.spinsLeft <= 0)) return;
     setIsSpinning(true);
+
+    const updatedPlayer = { ...player, spinsLeft: player.spinsLeft - 1 };
+    setPlayer(updatedPlayer);
+    await playerService.savePlayerState(updatedPlayer);
     
     if (mapRef.current) {
         try { mapRef.current.remove(); } catch { /* ignore */ }
@@ -115,43 +120,30 @@ export default function App() {
     const chance = Math.random();
     let treasure;
     
-    if (chance < 0.05) { 
+    if (chance < 0.1) {
       treasure = jackpotLocation;
-    } else if (chance < 0.40) { 
-      treasure = pickNonRepeating(indianTreasures);
-    } else if (chance < 0.75) { 
-      if (internationalTreasures && internationalTreasures.length > 0) {
-        treasure = pickNonRepeating(internationalTreasures);
-      } else {
-        treasure = pickNonRepeating(worldWonders);
-      }
-    } else if (chance < 0.95) { 
+    } else if (chance < 0.2) {
       treasure = pickNonRepeating(worldWonders);
+    } else if (chance < 0.6) {
+      treasure = pickNonRepeating(indianTreasures);
     } else {
-      treasure = await findRandomLandLocation();
+      const nonWonderInternationals = internationalTreasures.filter(
+        t => !worldWonders.some(w => w.name === t.name)
+      );
+      treasure = pickNonRepeating(nonWonderInternationals);
     }
-    if (!treasure) treasure = pickNonRepeating(worldWonders) || jackpotLocation;
+
+    if (!treasure) {
+      console.warn("Treasure selection failed, using fallback.");
+      treasure = pickNonRepeating(internationalTreasures) || jackpotLocation;
+    }
       
-    let normalized = {
-      name: treasure.name,
-      lat: Number(treasure.lat) || 0,
-      lon: Number(treasure.lon) || 0,
-      description: treasure.description || 'A mysterious and fascinating location.',
-      imageUrl: treasure.imageUrl || null,
-      points: treasure.points || 50
-    };
-
-    if (normalized.lat === 0 && normalized.lon === 0) {
-        const fallback = await findRandomLandLocation();
-        normalized = {...normalized, ...fallback};
-    }
-
-    setCurrentLocation(normalized);
+    setCurrentLocation(treasure);
     
     const THREE = window.THREE;
     const target = new THREE.Vector3();
-    const phi = (90 - normalized.lat) * (Math.PI / 180);
-    const theta = (normalized.lon + 180) * (Math.PI / 180);
+    const phi = (90 - treasure.lat) * (Math.PI / 180);
+    const theta = (treasure.lon + 180) * (Math.PI / 180);
     target.setFromSphericalCoords(1, phi, theta);
     const mx = new THREE.Matrix4().lookAt(target, new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0));
     const finalRotation = new THREE.Quaternion().setFromRotationMatrix(mx);
@@ -190,30 +182,82 @@ export default function App() {
   };
 
   const prepareTreasureCards = async (location) => {
-    const cardsData = [
-      { type: 'info', name: location.name, fact: location.description, imageUrl: location.imageUrl },
-      { type: 'photo', name: `A view of ${location.name}`, imageUrl: location.imageUrl },
-      { type: 'points', name: 'Doubloons', points: location.points }
+    let imageUrls = [];
+    if (location.name === jackpotLocation.name) {
+        imageUrls = [jackpotLocation.imageUrl, jackpotLocation.imageUrl]; 
+    } else {
+        imageUrls = await fetchAndCacheImageUrls(location.name);
+    }
+
+    let cardsData = [
+      { type: 'info', name: location.name, fact: location.description || "A place of great interest!", imageUrl: imageUrls[0], isVisible: false },
+      { type: 'photo', name: `A view of ${location.name}`, imageUrl: imageUrls[1] || imageUrls[0], isVisible: false }
     ];
+
+    if (location.lootedMessage) {
+        cardsData.push({ type: 'looted', name: 'Empty Handed!', message: location.lootedMessage, isVisible: false });
+    } else {
+        cardsData.push({ type: 'points', name: 'Doubloons', points: location.points, isVisible: false });
+    }
+
     setRevealedTreasures(cardsData);
+
+    setTimeout(() => {
+        setRevealedTreasures(prev => prev.map(c => ({ ...c, isVisible: true })));
+    }, 100);
+
     setTimeout(() => setIsSpinning(false), 1400);
   };
 
-  const handlePointsReveal = async (points) => {
-    if (!player || !player.id) return;
+  const handlePointsReveal = async ({ points, rect }) => {
+    if (!player || !player.id || points === 0) return;
     const newTotalPoints = (player.score || 0) + (points || 0);
     const updatedPlayer = { ...player, score: newTotalPoints };
     setPlayer(updatedPlayer);
-    await playerService.savePlayerScore(player.id, player.username, newTotalPoints);
+    await playerService.savePlayerState(updatedPlayer);
+
+    const scoreEl = document.querySelector('.player-info-panel');
+    if (!scoreEl || !rect) return;
+
+    const scoreRect = scoreEl.getBoundingClientRect();
+    const startX = rect.left + rect.width / 2;
+    const startY = rect.top + rect.height / 2;
+    const endX = scoreRect.left + scoreRect.width / 2;
+    const endY = scoreRect.top + scoreRect.height / 2;
+
+    for (let i = 0; i < 15; i++) {
+        const coin = document.createElement('div');
+        coin.classList.add('coin-particle');
+        document.body.appendChild(coin);
+
+        const anime = window.anime;
+
+        anime({
+            targets: coin,
+            left: [startX, endX + anime.random(-20, 20)],
+            top: [startY, endY + anime.random(-10, 10)],
+            scale: [1, 0.5],
+            opacity: [1, 0],
+            duration: 600 + anime.random(0, 300),
+            easing: 'easeInCubic',
+            delay: i * 30,
+            complete: () => coin.remove()
+        });
+    }
   };
   
   const handleSignOut = () => {
     playerService.removeActivePlayer();
     setPlayer(null);
     setCurrentView('home');
-    // Clear game-specific state
     setRevealedTreasures([]);
     setCurrentLocation(null);
+  };
+  
+  const getButtonText = () => {
+      if (isSpinning) return 'Sailing...';
+      if (player && player.spinsLeft <= 0) return 'Game Over';
+      return 'Find Treasure!';
   };
 
   return (
@@ -234,34 +278,46 @@ export default function App() {
           >
             <div className="treasure-card-wrapper">
               {revealedTreasures.map((treasure, index) => (
-                <TreasureCard key={index} treasure={treasure} onPointsReveal={handlePointsReveal} />
+                <TreasureCard key={index} treasure={treasure} onPointsReveal={handlePointsReveal} isVisible={treasure.isVisible} />
               ))}
             </div>
           </div>
           <div className="vortex-container" />
 
           <div className="ui-container">
-            <button 
-              className="themed-button spin-button" 
-              onClick={handleSpin} 
-              disabled={isLoading || isSpinning} 
-              style={{display: currentView === 'globe' ? 'block' : 'none'}}
-            >
-              {isSpinning ? 'Sailing...' : 'Find Treasure!'}
-            </button>
-            <button 
-              className="themed-button play-again-button" 
-              onClick={handleReset} 
-              style={{display: currentView === 'map' ? 'block' : 'none'}}
-            >
-              Sail Again!
-            </button>
+            {currentView === 'globe' ? (
+                <button 
+                  className="themed-button spin-button" 
+                  onClick={handleSpin} 
+                  disabled={isLoading || isSpinning || (player && player.spinsLeft <= 0)} 
+                >
+                  {getButtonText()}
+                </button>
+            ) : (
+              // This logic now shows a "Game Over" button when spins run out.
+              player && player.spinsLeft > 0 ? (
+                <button 
+                  className="themed-button play-again-button" 
+                  onClick={handleReset} 
+                >
+                  Sail Again!
+                </button>
+              ) : (
+                <button 
+                  className="themed-button game-over-button" 
+                  disabled
+                >
+                  Game Over
+                </button>
+              )
+            )}
           </div>
           
           {player && (
             <div className="player-info-panel">
               <div className="player-name">{player.username}</div>
               <div className="player-score">{player.score || 0} pts</div>
+              <div className="player-spins">Spins Left: {player.spinsLeft}</div>
               <button className="themed-button logout-button" onClick={handleSignOut}>
                 Abandon Ship
               </button>
@@ -272,3 +328,4 @@ export default function App() {
     </>
   );
 }
+

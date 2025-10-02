@@ -1,14 +1,26 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
-const TreasureCard = ({ treasure, onPointsReveal }) => {
+const TreasureCard = ({ treasure, onPointsReveal, isVisible }) => {
   const [isRevealed, setIsRevealed] = useState(false);
   const cardRef = useRef(null);
+  const [imgSrc, setImgSrc] = useState(treasure.imageUrl);
+
+  const fallbackImage = `https://placehold.co/1000x500/5C3D2E/E0C097?text=${encodeURIComponent(treasure.name)}`;
+
+  useEffect(() => {
+    setImgSrc(treasure.imageUrl || fallbackImage);
+  }, [treasure.imageUrl, treasure.name, fallbackImage]);
+
 
   const handlePointsClick = () => {
-    if (isRevealed) return;
+    if (isRevealed || !cardRef.current) return;
     setIsRevealed(true);
     createStarBlast();
-    if (onPointsReveal) onPointsReveal(treasure.points || 0);
+
+    const rect = cardRef.current.getBoundingClientRect();
+    if (onPointsReveal) {
+      onPointsReveal({ points: treasure.points || 0, rect });
+    }
   };
 
   const createStarBlast = () => {
@@ -39,12 +51,23 @@ const TreasureCard = ({ treasure, onPointsReveal }) => {
     el.appendChild(container);
     setTimeout(() => container.remove(), 1600);
   };
+  
+  const handleImgError = () => setImgSrc(fallbackImage);
 
-  const fallbackImage = 'https://placehold.co/1000x500/5C3D2E/E0C097?text=Map+Fragment';
+  // --- NEW: Looted Treasure Card ---
+  if (treasure.type === 'looted') {
+    return (
+      <div className={`treasure-card-revamped looted-card ${isVisible ? 'visible' : ''}`} ref={cardRef}>
+        <div className="looted-icon">☠️</div>
+        <h3>{treasure.name}</h3>
+        <p className="looted-message">"{treasure.message}"</p>
+      </div>
+    );
+  }
 
   if (treasure.type === 'points') {
     return (
-      <div className="treasure-card-revamped points-card" ref={cardRef} onClick={handlePointsClick}>
+      <div className={`treasure-card-revamped points-card ${isVisible ? 'visible' : ''}`} ref={cardRef} onClick={handlePointsClick}>
         {!isRevealed ? (
           <div className="points-hidden">
             <span className="points-question-mark">X</span>
@@ -53,26 +76,29 @@ const TreasureCard = ({ treasure, onPointsReveal }) => {
         ) : (
           <div className="points-revealed">
             <div className="points-value">{treasure.points}</div>
-            <div className="points-label">POINTS</div>
           </div>
         )}
       </div>
     );
   }
 
-  // Photo-only card: Renders just the image in the themed frame.
   if (treasure.type === 'photo') {
       return (
-          <div className="treasure-card-revamped photo-card" ref={cardRef}>
-              <div className="card-image" style={{ backgroundImage: `url(${treasure.imageUrl || fallbackImage})`, height: '100%' }} />
+          <div className={`treasure-card-revamped photo-card ${isVisible ? 'visible' : ''}`} ref={cardRef}>
+              <div 
+                className="card-image" 
+                style={{ backgroundImage: `url(${imgSrc})`, height: '100%' }}
+              >
+                  <img src={imgSrc} onError={handleImgError} style={{display: 'none'}} alt="" />
+              </div>
           </div>
       );
   }
   
-  // Info card with scrollable description
   return (
-    <div className="treasure-card-revamped" ref={cardRef}>
-      <div className="card-image" style={{ backgroundImage: `url(${treasure.imageUrl || fallbackImage})` }}>
+    <div className={`treasure-card-revamped ${isVisible ? 'visible' : ''}`} ref={cardRef}>
+      <div className="card-image" style={{ backgroundImage: `url(${imgSrc})` }}>
+          <img src={imgSrc} onError={handleImgError} style={{display: 'none'}} alt="" />
           <div className="card-image-overlay"></div>
       </div>
       <div className="card-content">

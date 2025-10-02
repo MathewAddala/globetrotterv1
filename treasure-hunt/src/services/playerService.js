@@ -1,6 +1,6 @@
 // Local-only player service (no Firebase/Firestore)
 
-const LS_KEY = 'treasure_hunt_players_v2'; // Changed key to avoid conflicts with old structure
+const LS_KEY = 'treasure_hunt_players_v3'; // Incremented key for new data structure
 
 // --- Internal Store Helpers ---
 function readStore() {
@@ -60,26 +60,20 @@ export function clearAllLocalPlayers() {
     notifyLeaderboardChanged();
 }
 
-export async function savePlayerScore(playerId, username, score) {
+export async function savePlayerState(player) {
+  if (!player || !player.id) return;
   try {
     const store = readStore();
-    const playerIndex = store.players.findIndex(p => p.id === playerId);
+    const playerIndex = store.players.findIndex(p => p.id === player.id);
 
     if (playerIndex > -1) {
-      store.players[playerIndex].score = score;
-      store.players[playerIndex].updatedAt = Date.now();
+      store.players[playerIndex] = { ...store.players[playerIndex], ...player, updatedAt: Date.now() };
     } else {
-      store.players.push({
-        id: playerId,
-        username: username,
-        score: score,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      });
+      store.players.push({ ...player, createdAt: Date.now(), updatedAt: Date.now() });
     }
     writeStore(store);
     notifyLeaderboardChanged();
-  } catch (e) { console.warn('savePlayerScore failed', e); }
+  } catch (e) { console.warn('savePlayerState failed', e); }
 }
 
 export async function fetchLeaderboard(limitN = 10) {
@@ -114,7 +108,7 @@ export default {
   setLocalPlayer,
   removeActivePlayer,
   clearAllLocalPlayers,
-  savePlayerScore,
+  savePlayerState,
   fetchLeaderboard,
   subscribeToLeaderboard,
   generatePlayerId

@@ -59,16 +59,17 @@ export default function Home({ onStartGame, player, setPlayer, leaders: propLead
         
         let p;
         if (existingPlayer) {
-            p = { ...existingPlayer };
-            showMessage(`Welcome back, Captain ${name}!`);
+            // Reset spins for existing player for a new game session
+            p = { ...existingPlayer, spinsLeft: 3 };
+            showMessage(`Welcome back, Captain ${name}! Your ship is ready.`);
         } else {
             const id = playerService.generatePlayerId(name);
-            p = { id, username: name, score: 0, createdAt: Date.now() };
+            p = { id, username: name, score: 0, spinsLeft: 3 };
             showMessage(`Welcome aboard, Captain ${name}!`);
         }
         
         playerService.setLocalPlayer(p);
-        await playerService.savePlayerScore(p.id, p.username, p.score);
+        await playerService.savePlayerState(p);
         setPlayer(p);
         
         setIsTransitioning(true);
