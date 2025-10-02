@@ -1,0 +1,304 @@
+html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background-color: #000;
+    font-family: sans-serif;
+}
+
+/* Make box-sizing predictable so padding is included in declared heights */
+*, *::before, *::after { box-sizing: border-box; }
+
+#root {
+  width: 100vw;
+  height: 100vh;
+}
+
+.globe-container, .map-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    transition: opacity 0.8s ease-in-out;
+}
+
+.map-container {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.ui-container {
+    position: absolute;
+    bottom: 16px; /* lowered so top-right sidebar doesn't overlap */
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 40;
+}
+.spin-button, .play-again-button {
+    padding: 15px 30px;
+    font-size: 1.2em;
+    font-weight: bold;
+    color: white;
+    background: #ff8c00;
+    border: none;
+    border-radius: 50px;
+    cursor: pointer;
+    transition: opacity 0.5s;
+}
+
+.play-again-button {
+    display: none;
+}
+
+.vortex-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 15;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+/* Sidebar: persistent futuristic player + leaderboard */
+.sidebar {
+    position: fixed; /* ensure it's anchored to viewport */
+    top: 20px;
+    right: 20px;
+    width: 360px;
+    max-height: calc(100vh - 80px);
+    background: linear-gradient(180deg, rgba(6,6,12,0.95), rgba(2,2,6,0.88));
+    border: 1px solid rgba(0,196,255,0.22);
+    box-shadow: 0 20px 50px rgba(0,196,255,0.12);
+    border-radius: 12px;
+    padding: 14px;
+    color: #bfefff;
+    z-index: 9999; /* top-most */
+    backdrop-filter: blur(8px) saturate(140%);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.sidebar h3 {
+    margin: 0;
+    color: #00f5ff;
+    text-shadow: 0 0 10px rgba(0,245,255,0.25);
+    font-weight: 700;
+}
+
+.player-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.player-panel .username-input {
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.06);
+    background: rgba(255,255,255,0.02);
+    color: #dffcff;
+}
+
+.player-controls { display:flex; gap:8px; align-items:center; }
+.btn { padding:8px 10px; border-radius:8px; border:none; cursor:pointer; font-weight:600; }
+.btn.primary { background: linear-gradient(90deg,#00c2ff,#7afcff); color:#002029; }
+.btn.ghost { background: rgba(255,255,255,0.02); color:#bfefff; border:1px solid rgba(255,255,255,0.04); }
+
+.player-info { font-size:0.95em; color:#c7f7ff; display:flex; justify-content:space-between; }
+
+.leaderboard {
+    background: linear-gradient(180deg, rgba(3,10,20,0.35), rgba(2,6,12,0.25));
+    border: 1px solid rgba(0,200,255,0.06);
+    padding: 10px;
+    border-radius: 8px;
+    overflow: auto;
+    max-height: 320px;
+}
+.leaderboard h4 { margin:0 0 6px 0; color:#8ff9ff; font-size:1.05em }
+.leaderboard ol { margin: 0; padding-left: 20px; color:#e6fbff }
+.leaderboard li { margin:6px 0; display:flex; justify-content:space-between; gap:8px; }
+.leaderboard .rank { color:#89f6ff; font-weight:700; margin-right:8px }
+
+/* Responsive: collapse sidebar on small screens */
+@media (max-width: 880px) {
+    .sidebar { display: none; }
+}
+
+.vortex-particle {
+    position: absolute;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0) 70%);
+    border-radius: 50%;
+    width: 300px;
+    height: 300px;
+}
+
+
+/* New Treasure Card Styles */
+/* ADD THIS NEW CODE FOR THE TREASURE CARDS */
+.treasure-card-wrapper {
+    position: absolute;
+    bottom: 150px; /* CHANGED: Moved cards higher */
+    left: 0;
+    right: 0;
+    width: 100%;
+    z-index: 30;
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    pointer-events: none;
+}
+.treasure-card-wrapper.visible {
+    bottom: 20px; /* Animate to this position */
+    pointer-events: auto; /* Enable interaction when visible */
+}
+
+/* NEW: Futuristic Treasure Card Styles */
+.treasure-card {
+    position: relative; /* No longer absolute */
+    width: 320px;
+    height: 420px;
+    box-sizing: border-box;
+    background: linear-gradient(135deg, rgba(30, 30, 50, 0.9), rgba(10, 10, 20, 0.9));
+    border: 1px solid #00c4ff;
+    border-radius: 12px;
+    color: white;
+    box-shadow: 0 8px 25px rgba(0, 196, 255, 0.2);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    opacity: 0; /* Start invisible for animation */
+    transform: translateY(100px); /* Start below final position */
+    transition: transform 0.3s ease-out, box-shadow 0.3s ease-out;
+    pointer-events: auto;
+}
+
+/* Ensure info card shares same dimensions and spreads text vertically */
+.treasure-card.info-only {
+    background: linear-gradient(180deg, rgba(12,12,20,0.95), rgba(6,6,10,0.95));
+    padding: 12px;
+}
+.treasure-card.info-only .treasure-info {
+    padding: 14px 16px; /* match regular cards */
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between; /* Spread content top-to-bottom */
+}
+.treasure-card.info-only .treasure-desc { margin-top: 8px; flex-grow: 1; }
+
+/* Spacer used to keep info-only cards visually identical to image cards */
+.info-spacer { width: 100%; height: 240px; background: transparent; border-bottom: none; }
+
+/* Ensure the info area exactly matches remaining card height and does not cause overflow */
+.treasure-info {
+    height: calc(420px - 240px); /* total card height minus image/spacer */
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.treasure-card-wrapper.visible .treasure-card {
+    opacity: 1; /* Fade in */
+    transform: translateY(0); /* Slide up */
+}
+
+/* Individual card animations for delayed entry */
+.treasure-card-wrapper.visible .treasure-card:nth-child(1) { transition-delay: 0.2s; }
+.treasure-card-wrapper.visible .treasure-card:nth-child(2) { transition-delay: 0.3s; }
+.treasure-card-wrapper.visible .treasure-card:nth-child(3) { transition-delay: 0.4s; }
+
+.treasure-card:hover {
+    transform: translateY(-10px) !important; /* Move up on hover */
+    z-index: 40;
+    box-shadow: 0 12px 40px rgba(0, 196, 255, 0.6);
+}
+
+.close-card-button {
+    position: absolute; top: 10px; right: 10px;
+    background: rgba(255, 255, 255, 0.2); border: none;
+    border-radius: 50%; width: 30px; height: 30px;
+    color: white; font-size: 1.2em; cursor: pointer;
+    transition: background 0.3s ease;
+}
+.close-card-button:hover { background: rgba(255, 255, 255, 0.4); }
+
+.treasure-image {
+    width: 100%;
+    height: 240px; /* image area */
+    background-color: #000;
+    background-size: cover;
+    background-position: center;
+    border-bottom: none; /* Remove separator so photo covers cleanly */
+    display: block;
+    z-index: 1;
+}
+
+/* The actual <img> used by photo cards */
+.photo-img {
+    width: 100%;
+    height: 240px;
+    object-fit: cover;
+    display: block;
+    border-radius: 0;
+}
+
+.treasure-info {
+    padding: 14px 16px;
+    flex-grow: 1; /* Allow info to take remaining space */
+    display: flex;
+    flex-direction: column;
+}
+
+.treasure-info h3 {
+    margin: 0 0 8px 0;
+    font-size: 1.4em;
+    color: #00fff6; /* Brighter accent */
+    text-shadow: 0 0 14px rgba(0, 255, 246, 0.9);
+    filter: drop-shadow(0 0 8px rgba(0,255,246,0.6));
+}
+
+.treasure-info p {
+    margin: 8px 0 0 0;
+    font-size: 0.95em;
+    line-height: 1.45;
+    color: #e6f7ff;
+}
+
+/* Improved description typography and placement */
+.treasure-desc {
+    font-family: 'Georgia', serif;
+    font-style: italic;
+    color: #e6f7ff;
+    font-size: 1.05em;
+    line-height: 1.5;
+    margin-top: 6px;
+    max-height: 4.2em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Make info text glow more and allow longer visible text */
+.treasure-info .treasure-desc { color: #fff; text-shadow: 0 0 8px rgba(255,255,255,0.06); }
+
+/* Photo-only card: minimal overlay caption */
+.photo-card .treasure-info { display:none; }
+.photo-card .treasure-desc { display: none; }
+.photo-card h3 { display:none; }
+
+/* Points card styles and hidden state */
+.points-card { display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg,#191919,#0b1220); }
+.points-card .points-card-hidden { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; }
+.points-card .question { width:84px; height:84px; border-radius:50%; background:linear-gradient(45deg,#ffd24d,#ff8c00); display:flex; align-items:center; justify-content:center; font-size:2.4em; color:#3b2500; box-shadow:0 6px 18px rgba(255,140,0,0.35);} 
+.points-card .points-title { margin:0; color:#ffd; font-size:1em; }
+.points-revealed { display:flex; flex-direction:column; align-items:center; justify-content:center; }
+.points-value { font-size:2.2em; color:#ffecb3; font-weight:700; text-shadow:0 2px 10px rgba(255,220,140,0.3);} 
+.points-label { font-size:0.9em; color:#ffd; margin-top:6px; }
+
+/* Star blast particles */
+.star-blast-container { position:absolute; left:0; top:0; right:0; bottom:0; pointer-events:none; overflow:visible; }
+.star-particle { position:absolute; background: radial-gradient(circle, #fff 0%, rgba(255,255,255,0.2) 60%); border-radius:50%; box-shadow:0 6px 12px rgba(255,200,80,0.3); }
