@@ -1,185 +1,121 @@
 // Local-only player service (no Firebase/Firestore)
 
-// --- Global Variable Setup ---
-const LS_KEY = 'treasure_hunt_players';
+const LS_KEY = 'treasure_hunt_players_v2'; // Changed key to avoid conflicts with old structure
 
-export function getLocalPlayer() {
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    // Migration: older versions may have stored a single player object
-    if (parsed && parsed.id && parsed.username) {
-      // convert to new shape
-      const store = { players: [parsed], activeId: parsed.id };
-      localStorage.setItem(LS_KEY, JSON.stringify(store));
-      return parsed;
-    }
-    // Expected new shape: { players: [...], activeId }
-    if (parsed && Array.isArray(parsed.players)) {
-      return parsed.players.find(p => p.id === parsed.activeId) || null;
-    }
-    return null;
-  } catch (e) { console.warn('getLocalPlayer parsing error', e); return null; }
-}
-
-export function setLocalPlayer(player) {
-  try {
-    // When called with null, clear the active player but keep stored players
-    const raw = localStorage.getItem(LS_KEY);
-    let store = raw ? JSON.parse(raw) : { players: [], activeId: null };
-
-    // Migration: if raw contained a single player object, convert it
-    if (store && store.id && store.username) {
-      store = { players: [store], activeId: store.id };
-    }
-
-    if (!player) {
-      store.activeId = null;
-      localStorage.setItem(LS_KEY, JSON.stringify(store));
-      return;
-    }
-
-    // Upsert player into players list and set as activeId
-    const idx = store.players.findIndex(p => p.id === player.id);
-    if (idx >= 0) {
-      store.players[idx] = { ...store.players[idx], ...player };
-    } else {
-      store.players.push(player);
-    }
-    store.activeId = player.id;
-    localStorage.setItem(LS_KEY, JSON.stringify(store));
-  } catch (e) { console.warn('setLocalPlayer error', e); }
-}
-
-// Return the raw store object for internal use
+// --- Internal Store Helpers ---
 function readStore() {
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return { players: [], activeId: null };
     const parsed = JSON.parse(raw);
-    if (parsed && parsed.id && parsed.username) {
-      return { players: [parsed], activeId: parsed.id };
-    }
     if (parsed && Array.isArray(parsed.players)) return parsed;
     return { players: [], activeId: null };
-  } catch (e) { console.warn('readStore error', e); return { players: [], activeId: null }; }
+  } catch (e) { 
+    console.warn('readStore error, resetting store', e); 
+    return { players: [], activeId: null }; 
+  }
 }
 
 function writeStore(store) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(store)); } catch (e) { console.warn('writeStore error', e); }
+  try { 
+    localStorage.setItem(LS_KEY, JSON.stringify(store)); 
+  } catch (e) { 
+    console.warn('writeStore error', e); 
+  }
 }
 
-export function getAllPlayers() {
-  const store = readStore();
-  return (store.players || []).slice();
-}
-
-export function clearAllLocalPlayers() {
+// --- Event Dispatcher for Real-time Updates ---
+function notifyLeaderboardChanged() {
   try {
-    localStorage.removeItem(LS_KEY);
-    notifyLeaderboardChanged();
-    console.log('Cleared local players store.');
-  } catch (e) { console.warn('clearAllLocalPlayers failed', e); }
+    const event = new CustomEvent('leaderboard-changed');
+    window.dispatchEvent(event);
+  } catch (e) { /* ignore */ }
 }
 
-export function setActivePlayerById(id) {
+// --- Public API ---
+
+export function getLocalPlayer() {
   const store = readStore();
-  if (!id) { store.activeId = null; writeStore(store); return null; }
-  const p = store.players.find(pl => pl.id === id) || null;
-  if (p) { store.activeId = id; writeStore(store); }
-  return p;
+  return store.players.find(p => p.id === store.activeId) || null;
+}
+
+export function setLocalPlayer(player) {
+  const store = readStore();
+  store.activeId = player ? player.id : null;
+  if (player) {
+    const idx = store.players.findIndex(p => p.id === player.id);
+    if (idx < 0) store.players.push(player);
+  }
+  writeStore(store);
 }
 
 export function removeActivePlayer() {
   const store = readStore();
-  store.activeId = null; writeStore(store);
+  store.activeId = null;
+  writeStore(store);
 }
 
-// --- Leaderboard Operations (Firestore) ---
+export function clearAllLocalPlayers() {
+    localStorage.removeItem(LS_KEY);
+    notifyLeaderboardChanged();
+}
 
 export async function savePlayerScore(playerId, username, score) {
-  // Update local store only
   try {
-    const localPlayer = { id: playerId, username, score, updatedAt: Date.now() };
-    setLocalPlayer(localPlayer);
-  } catch (e) { console.warn('savePlayerScore local save failed', e); }
-  notifyLeaderboardChanged();
+    const store = readStore();
+    const playerIndex = store.players.findIndex(p => p.id === playerId);
+
+    if (playerIndex > -1) {
+      store.players[playerIndex].score = score;
+      store.players[playerIndex].updatedAt = Date.now();
+    } else {
+      store.players.push({
+        id: playerId,
+        username: username,
+        score: score,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      });
+    }
+    writeStore(store);
+    notifyLeaderboardChanged();
+  } catch (e) { console.warn('savePlayerScore failed', e); }
 }
 
-// Dispatch a simple event to notify local-only listeners that leaderboard changed
-function notifyLeaderboardChanged() {
-  try {
-    const ev = new CustomEvent('leaderboard-changed', { detail: { ts: Date.now() } });
-    if (typeof window !== 'undefined' && window.dispatchEvent) window.dispatchEvent(ev);
-  } catch (e) { /* ignore */ }
+export async function fetchLeaderboard(limitN = 10) {
+  const store = readStore();
+  const sortedPlayers = (store.players || []).slice().sort((a, b) => (b.score || 0) - (a.score || 0));
+  return sortedPlayers.slice(0, limitN);
 }
 
-/**
- * Fetch leaderboard snapshot once. Falls back to local players if Firestore unavailable.
- */
-export async function fetchLeaderboard(limitN = 12) {
-  // Local-only leaderboard
-  try {
-    const players = getAllPlayers().slice().sort((a,b) => (b.score||0) - (a.score||0));
-    return players.slice(0, limitN).map(p => ({ id: p.id, username: p.username || 'Player', score: p.score || 0, updatedAt: p.updatedAt || 0 }));
-  } catch (e) {
-    console.warn('fetchLeaderboard local error', e);
-    return [];
-  }
-}
-
-// No remote player fetching in local-only mode
-
-
-/**
- * Sets up a real-time listener for the leaderboard.
- * @param {function} callback - Function to call with the updated list of leaders.
- * @param {number} limitN - Maximum number of results.
- * @returns {function} - Unsubscribe function.
- */
-export function subscribeToLeaderboard(callback, limitN = 12) {
-  // Local-only subscription: call callback with current leaderboard and listen for local changes
+export function subscribeToLeaderboard(callback, limitN = 10) {
   let mounted = true;
-  (async () => {
+  const update = async () => {
+    if (!mounted) return;
     const rows = await fetchLeaderboard(limitN);
-    if (mounted) callback(rows);
-  })();
-
-  const listener = async () => {
-    const rows = await fetchLeaderboard(limitN);
-    if (mounted) callback(rows);
+    callback(rows);
   };
-  if (typeof window !== 'undefined' && window.addEventListener) {
-    window.addEventListener('leaderboard-changed', listener);
-  }
-  return () => { mounted = false; if (typeof window !== 'undefined' && window.removeEventListener) window.removeEventListener('leaderboard-changed', listener); };
+  update();
+  window.addEventListener('leaderboard-changed', update);
+  return () => { 
+    mounted = false; 
+    window.removeEventListener('leaderboard-changed', update); 
+  };
 }
 
-// Utility to generate a unique ID based on username
 export function generatePlayerId(username) {
   const base = (username || 'guest').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  // Append a unique-ish hash to ensure uniqueness even if multiple people pick the same name
-  return base + '-' + Math.abs(hashCode((username || '') + Date.now())).toString(36).slice(0,6);
-}
-
-function hashCode(s) {
-  let h = 0; for (let i = 0; i < s.length; i++) h = (h<<5)-h + s.charCodeAt(i) | 0; return h;
+  const hash = Math.abs(s => s.split('').reduce((a,b)=>{a=((a<<5)-a)+b.charCodeAt(0);return a&a},0)(username + Date.now())).toString(36).slice(0, 6);
+  return `${base}-${hash}`;
 }
 
 export default {
-  // players
   getLocalPlayer,
   setLocalPlayer,
-  getAllPlayers,
-  clearAllLocalPlayers,
-  setActivePlayerById,
   removeActivePlayer,
-  // leaderboard
+  clearAllLocalPlayers,
   savePlayerScore,
   fetchLeaderboard,
   subscribeToLeaderboard,
-  // (no remote firestore/auth in local-only mode)
-  // utils
   generatePlayerId
 };
