@@ -15,6 +15,18 @@ const showMessage = (text) => {
     setTimeout(() => { container.style.display = 'none'; }, 3000);
 };
 
+// ADDED: Secret Modal Component
+const SecretModal = ({ onClose }) => (
+    <div className="secret-modal-overlay" onClick={onClose}>
+        <div className="secret-modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>A Secret Whisper...</h3>
+            <p>The ultimate treasure, a bounty of 2000 points, is rumored to be hidden at a place of great knowledge...</p>
+            <p className="secret-location">KL University, Vaddeswaram!</p>
+            <button className="themed-button small" onClick={onClose}>Heed the call</button>
+        </div>
+    </div>
+);
+
 // Animated ship component
 function AnimatedShip() {
     return (
@@ -44,6 +56,7 @@ export default function Home({ onStartGame, player, setPlayer, leaders: propLead
     const [usernameInput, setUsernameInput] = useState('');
     const [leaders, setLeaders] = useState(propLeaders || []);
     const [isTransitioning, setIsTransitioning] = useState(false);
+    const [isSecretVisible, setIsSecretVisible] = useState(false); // ADDED: State for the modal
 
     useEffect(() => {
         if (propLeaders) setLeaders(propLeaders.slice(0, 10));
@@ -87,7 +100,7 @@ export default function Home({ onStartGame, player, setPlayer, leaders: propLead
         <div className={`home-container-revamped ${isTransitioning ? 'fade-out' : ''}`}>
             <div className="home-background-image" />
             <div className="home-content-wrapper">
-                <h1 className="main-title">GlobeTrekker</h1>
+                <h1 className="main-title">GlobeTrotter</h1>
                 <div className="main-panel">
                     <div className="adventure-awaits-panel">
                         <div className="panel-header">ADVENTURE AWAITS!</div>
@@ -116,7 +129,8 @@ export default function Home({ onStartGame, player, setPlayer, leaders: propLead
 
                     <div className="map-and-leaderboard-panel">
                          <div className="map-side">
-                            <div className="map-drawing">
+                            {/* ADDED: onClick handler to show the modal */}
+                            <div className="map-drawing" onClick={() => setIsSecretVisible(true)}>
                                 <AnimatedShip />
                                 <div className="grand-prize-text">The Grand Prize</div>
                             </div>
@@ -128,6 +142,9 @@ export default function Home({ onStartGame, player, setPlayer, leaders: propLead
                 </div>
             </div>
             <div id="notification-modal" className="themed-notification"></div>
+            {/* ADDED: Conditional rendering for the modal */}
+            {isSecretVisible && <SecretModal onClose={() => setIsSecretVisible(false)} />}
         </div>
     );
 }
+
