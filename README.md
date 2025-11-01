@@ -1,111 +1,115 @@
-# Globetrotter
+![MIT License](https://img.shields.io/badge/License-MIT-green.svg)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+# GlobeTrotter
 
-A treasure hunt web app built with JavaScript and React that brings interactive location-based adventures to life.
+GlobeTrotter is a pirate-themed 3D treasure hunt game built with React and Three.js. This application invites users to spin a globe, discover real-world locations, and find treasure—or a pre-looted chest—all within a three-spin limit.
+
+This project was built as an interactive, gamified web application that leverages several modern web technologies to create a dynamic user experience.
 
 ## Features
 
-- 🗺️ **Interactive Maps**: Navigate through engaging treasure hunt experiences
-- 🎯 **Location-Based Challenges**: Solve puzzles and complete challenges at different locations
-- 📱 **Responsive Design**: Seamless experience across desktop and mobile devices
-- ⚡ **Real-Time Updates**: Dynamic content updates as you progress through the hunt
-- 🎨 **Modern UI**: Clean and intuitive user interface built with React
+- **Interactive 3D Globe**: Spin a realistic 3D globe to select a random destination (powered by Three.js).
+- **Satellite Map View**: Automatically fly to and zoom in on your destination with a high-resolution satellite map (powered by MapLibre GL JS).
+- **Dynamic Treasure System**:
+  - Find high-value treasures at World Wonders.
+  - Discover the 2000-point jackpot at KL University.
+  - Stumble upon humorous "looted" messages at many locations.
+- **3-Spin Limit**: Each player gets three spins per game to achieve the highest score.
+- **Dynamic Image Fetching**: Treasure cards feature unique images for each location, fetched dynamically from the Pixabay API and cached in the browser's local storage.
+- **Polished Animations**: The UI features a vortex transition, staggered card reveals, and a "coin blast" animation on scoring (powered by Anime.js).
+- **Local Leaderboard**: High scores are saved to the browser's localStorage to track top captains.
+- **Secret Modal**: A hidden modal on the home screen reveals a clue to the jackpot's location.
 
 ## Technology Stack
 
-- **Frontend**: React.js
-- **Languages**: JavaScript, HTML, CSS
-- **Package Manager**: npm
-- **Development Server**: React Scripts
-- **Deployment**: Vercel
+- **Frontend**: React 19
+- **Build Tool**: Vite
+- **3D Globe**: Three.js
+- **2D Map**: MapLibre GL JS
+- **Animations**: Anime.js
+- **External APIs**:
+  - Pixabay API (for location images)
+  - MapTiler API (for satellite map tiles)
 
-## Quick Start
+## Getting Started
 
-Get started with Globetrotter in just a few steps:
-
-```bash
-# Clone the repository
-git clone https://github.com/MathewAddala/globetrotterv1.git
-
-# Navigate to the project directory
-cd globetrotterv1/treasure-hunt
-
-# Install dependencies
-npm install
-
-# Run the app locally
-npm start
-```
-
-The app will open in your browser at `http://localhost:3000`.
-
-## Environment Setup
+Follow these instructions to get a local copy up and running.
 
 ### Prerequisites
 
-- **Node.js**: Version 14.x or higher
-- **npm**: Version 6.x or higher
+You must have [Node.js](https://nodejs.org/) (which includes npm) installed on your system.
 
-### Installation Steps
+### Installation
 
-1. **Clone the Repository**
+**Clone the Repository**
 
 ```bash
 git clone https://github.com/MathewAddala/globetrotterv1.git
 ```
 
-2. **Install Dependencies**
-
-Navigate to the project folder and install the required packages:
+**Navigate to the Project**
 
 ```bash
 cd globetrotterv1/treasure-hunt
+```
+
+**Install Dependencies**
+
+```bash
 npm install
 ```
 
-3. **Run the App Locally**
+### Environment Setup
 
-Start the development server:
+This project requires API keys to function correctly.
+
+**Create an Environment File**
+
+Create a new file in the `treasure-hunt` root directory (the same folder as `package.json`) and name it `.env`.
+
+**Add API Keys**
+
+Open the `.env` file and add your Pixabay API key. You can get a free key from the [Pixabay website](https://pixabay.com/api/docs/).
+
+```
+# Get your free API key from pixabay.com
+VITE_PIXABAY_API_KEY="YOUR_API_KEY_HERE"
+```
+
+**Note**: The MapTiler API key is already included in the source code for this version.
+
+## Running the Application
+
+**Start the Development Server**
 
 ```bash
-npm start
+npm run dev
 ```
 
-The application will automatically open in your default browser at `http://localhost:3000`.
+This command will start the Vite development server.
 
-4. **Build for Production**
+**View in Browser**
 
-To create an optimized production build:
+Open your browser and navigate to the local URL shown in your terminal (usually `http://localhost:5173`).
 
-```bash
-npm run build
-```
+## Testing on a Local Network
 
-## Project Structure
+To test the application on other devices (like a mobile phone) on your same network:
 
-```
-globetrotterv1/
-└── treasure-hunt/
-    ├── public/
-    ├── src/
-    ├── package.json
-    └── README.md
-```
-
-## Live Demo
-
-Check out the live application at: [globetrotterv1.vercel.app](https://globetrotterv1.vercel.app/)
-
-## Contributing
-
-Contributions are welcome! Feel free to open issues or submit pull requests.
+1. Ensure your laptop and mobile device are connected to the same Wi-Fi network or mobile hotspot.
+2. The `vite.config.js` file is already configured with `host: true` to allow network access.
+3. When you run `npm run dev`, the terminal will display a "Network" URL (e.g., `http://192.168.1.10:5173`).
+4. Open this Network URL on your mobile device's browser to play the game.
 
 ## License
 
-Copyright © 2025 Mathew Addala
+This project is licensed under the MIT License. See the LICENSE file for details.
 
-MIT License
+---
+
+### MIT License
+
+Copyright (c) 2025 Mathew Addala
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
